@@ -323,6 +323,7 @@ class WordCloudGenerator:
 
         if file_path:
             composite.save(file_path)
+            composite.save(file_path, quality=95)  # 对于JPEG格式，如果需要进一步优化导出图片的质量，可以在保存时添加质量参数
             messagebox.showinfo("保存成功", f"图片已保存至：{file_path}")
 
     def create_info_image(self):
