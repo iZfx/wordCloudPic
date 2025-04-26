@@ -4,7 +4,7 @@ import pandas as pd
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import re
 import jieba
@@ -23,13 +23,14 @@ class WordCloudGenerator:
         self.filtered_df = None
         self.current_sheet = tk.StringVar()
         self.selected_column = tk.StringVar()
-        self.shape_var = tk.StringVar(value="square")
+        self.shape_var = tk.StringVar(value="rectangle")
         self.color_var = tk.StringVar(value="viridis")
-        self.width_var = tk.IntVar(value=800)
-        self.height_var = tk.IntVar(value=600)
+        self.width_var = tk.IntVar(value=1920)
+        self.height_var = tk.IntVar(value=1080)
         self.radius_var = tk.IntVar(value=400)
         self.word_freq = {}
         self.create_time = ""
+        self.wc_image = None  # 新增：存储词云图像对象
 
         # 设置中文字体
         self.font_path = self.get_font_path()
@@ -140,8 +141,9 @@ class WordCloudGenerator:
         ttk.Combobox(color_frame, textvariable=self.color_var, values=colors, width=12).pack(padx=5, pady=5)
 
         # 生成按钮
-        ttk.Button(control_frame, text="生成词云", command=self.generate_wordcloud).grid(row=4, column=0, columnspan=2,
-                                                                                         pady=10)
+        ttk.Button(control_frame, text="生成词云", command=self.generate_wordcloud).grid(row=4, column=0, pady=10)
+        # 在控制区添加导出按钮
+        ttk.Button(control_frame, text="导出图片", command=self.export_image).grid(row=4, column=1, pady=5)
 
         # 信息展示区
         info_frame = ttk.LabelFrame(control_frame, text="词云信息")
@@ -283,6 +285,9 @@ class WordCloudGenerator:
                 mask=mask
             ).generate_from_frequencies(self.word_freq)
 
+            # 存储生成的词云图像
+            self.wc_image = wc.to_image()
+
             # 更新信息
             self.create_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.update_info()
@@ -297,6 +302,79 @@ class WordCloudGenerator:
         except Exception as e:
             messagebox.showerror("错误", f"生成失败: {str(e)}")
 
+    def export_image(self):
+        if self.wc_image is None:
+            messagebox.showwarning("导出失败", "请先生成词云图")
+            return
+
+        # 创建信息面板
+        info_img = self.create_info_image()
+
+        # 合成图片
+        composite = self.composite_images(self.wc_image, info_img)
+
+        # 保存文件
+        file_types = [("PNG 图片", "*.png"), ("JPEG 图片", "*.jpg")]
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            filetypes=file_types,
+            title="保存词云图片"
+        )
+
+        if file_path:
+            composite.save(file_path)
+            messagebox.showinfo("保存成功", f"图片已保存至：{file_path}")
+
+    def create_info_image(self):
+        # 创建信息图像
+        font_size = 16
+        line_spacing = 20
+        try:
+            font = ImageFont.truetype(self.font_path, font_size)
+        except:
+            font = ImageFont.load_default()
+
+        # 计算图像尺寸
+        text_lines = [
+            "=== 词云参数 ===",
+            f"形状：{self.shape_var.get()}",
+            f"尺寸：{self.width_var.get()}x{self.height_var.get()}",
+            f"生成时间：{self.create_time}",
+            "\n=== 高频词汇 ==="
+        ]
+
+        # 添加词频信息
+        sorted_words = sorted(self.word_freq.items(), key=lambda x: -x[1])[:50]
+        for word, count in sorted_words:
+            text_lines.append(f"{word}: {count}次")
+
+        # 计算最大文本宽度
+        max_width = max(font.getsize(line)[0] for line in text_lines)
+        total_height = len(text_lines) * line_spacing + 20
+
+        # 创建图像
+        info_img = Image.new("RGB", (max_width + 50, total_height), "white")
+        draw = ImageDraw.Draw(info_img)
+
+        # 绘制文本
+        y = 10
+        for line in text_lines:
+            draw.text((20, y), line, fill="black", font=font)
+            y += line_spacing
+
+        return info_img
+
+    def composite_images(self, left_img, right_img):
+        # 调整图像高度一致
+        max_height = max(left_img.height, right_img.height)
+        left_img = left_img.resize((left_img.width, max_height))
+        right_img = right_img.resize((right_img.width, max_height))
+
+        # 创建合成图像
+        composite = Image.new("RGB", (left_img.width + right_img.width, max_height))
+        composite.paste(left_img, (0, 0))
+        composite.paste(right_img, (left_img.width, 0))
+        return composite
     def update_info(self):
         self.info_text.delete(1.0, tk.END)
         self.info_text.insert(tk.END, "词云参数：\n")
